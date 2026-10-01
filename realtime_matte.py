@@ -20,7 +20,7 @@ AI 배경 플레이트와의 합성은 composite.py에서 이 파일의 Matter �
 
 미리보기 창 단축키:
     1  초록 배경 위 전경      2  알파 매트      3  원본 | 알파 나란히
-    r  recurrent state 초기화    q / ESC  종료
+    r  recurrent state 초기화    f  전체화면 전환    q / ESC  종료
 """
 
 import argparse
@@ -234,6 +234,8 @@ def add_common_args(parser):
                         help="출력 화면을 mp4로 저장할 경로 (선택)")
     parser.add_argument("--max-frames", type=int, default=None,
                         help="이 개수만큼 처리하고 종료 (테스트용)")
+    parser.add_argument("--fullscreen", action="store_true",
+                        help="미리보기 창을 전체화면으로 시작 (실행 중 f 키로 전환)")
 
 
 def build_matter(args):
@@ -244,14 +246,28 @@ def build_matter(args):
     return Matter(model, device, args.downsample_ratio)
 
 
-def run_loop(args, matter, render, on_key=None):
+def open_source(args):
+    """입력을 엽니다. 모델 로드(수 초)보다 먼저 호출해 경로 오타를 바로 알려줍니다."""
+    return FrameSource(args.source, args.width, args.height, args.loop)
+
+
+def set_fullscreen(on):
+    cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN,
+                          cv2.WINDOW_FULLSCREEN if on else cv2.WINDOW_NORMAL)
+
+
+def run_loop(args, source, matter, render, on_key=None):
     """
     입력을 읽어 matter.process → render(src, fgr, pha) → 화면/파일 출력을 반복합니다.
 
     render는 BGR uint8 이미지를 반환하는 함수이고, on_key(key)는 처리하지 않은
-    키 입력을 받아 추가 동작을 하고 싶을 때 넘깁니다.
+    키 입력을 받아 추가 동작을 하고 싶을 때 넘깁니다. source는 끝나면 닫습니다.
     """
-    source = FrameSource(args.source, args.width, args.height, args.loop)
+    fullscreen = args.fullscreen
+    if not args.no_display:
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+        if fullscreen:
+            set_fullscreen(True)
     writer = None
     frames = 0
     fps = 0.0
@@ -298,6 +314,9 @@ def run_loop(args, matter, render, on_key=None):
             if key == ord("r"):
                 matter.reset()
                 print("[정보] recurrent state 초기화")
+            elif key == ord("f"):
+                fullscreen = not fullscreen
+                set_fullscreen(fullscreen)
             elif on_key is not None and key != 255:
                 on_key(key)
     finally:
@@ -325,8 +344,13 @@ def main():
             state["view"] = VIEWS[key - ord("1")]
 
     try:
-        matter = build_matter(args)
-        run_loop(args, matter, lambda s, f, p: render_view(state["view"], s, f, p), on_key)
+        source = open_source(args)
+        try:
+            matter = build_matter(args)
+        except BaseException:
+            source.release()
+            raise
+        run_loop(args, source, matter, lambda s, f, p: render_view(state["view"], s, f, p), on_key)
     except (FileNotFoundError, RuntimeError) as exc:
         raise SystemExit(f"[오류] {exc}")
 

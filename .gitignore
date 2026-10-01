@@ -8,6 +8,9 @@ models/*
 *.torchscript
 *.onnx
 
+# 테스트 샘플 (scripts/download_samples.py로 받음/생성)
+samples/
+
 # 출력물
 outputs/
 

@@ -20,8 +20,8 @@ AI로 만든 배경 이미지와 **실시간 합성**하는 로컬 파이프라�
 | 1 | RVM 공식 저장소 설치 + 모델 불러오기 + 장치 자동 선택 | `rvm_loader.py` | ✅ |
 | 2 | 사전학습 가중치 다운로드 + 설치 확인 | `scripts/download_weights.py`, `scripts/verify_install.py` | ✅ |
 | 3 | 실시간 캡처·매팅 | `realtime_matte.py` | ✅ |
-| 4 | AI 배경 플레이트와 실시간 합성 | `composite.py` | ⏳ 다음 단계 |
-| 5 | 카메라 없이 테스트 영상으로 검증 | — | ⏳ 다음 단계 |
+| 4 | AI 배경 플레이트와 실시간 합성 | `composite.py` | ✅ |
+| 5 | 카메라 없이 테스트 영상으로 검증 | `scripts/download_samples.py`, `scripts/selftest.py` | ✅ |
 
 ---
 
@@ -264,7 +264,7 @@ python scripts/download_weights.py
 - `.pth` 파일은 `.gitignore`에 등록되어 있어 커밋되지 않습니다.
 
 > 실행할 때 `--variant resnet50` 옵션을 붙이면 resnet50 모델로 바뀝니다
-> (9번 참고).
+> (10번 참고).
 
 ### 8. 설치 확인
 
@@ -297,12 +297,55 @@ python scripts/verify_install.py
   mobilenetv3 기준 약 11 FPS가 나왔습니다. GPU가 있는데 `장치: cpu`로 나온다면
   5번의 GPU 설치 과정을 다시 확인하세요.
 
-### 9. 실행 — 실시간 매팅 미리보기 (`realtime_matte.py`)
+### 9. 카메라 없이 전체 동작 확인 (샘플 영상)
 
-사람 영역(알파 매트)을 실시간으로 뽑아 화면에 보여줍니다. AI 배경 이미지와의
-합성은 다음 단계의 `composite.py`에서 추가됩니다.
+카메라·캡처카드를 연결하기 전에, 샘플 영상으로 **입력 → 사람 분리 → 배경 합성
+→ 저장** 전체 과정이 정상인지 확인합니다.
 
-#### 9-1. 카메라 / HDMI 캡처카드로 실행
+1. 샘플 준비 (최초 1회):
+   ```
+   python scripts/download_samples.py
+   ```
+   `samples` 폴더에 아래 파일이 생깁니다 (커밋되지 않음).
+   - `vtest.avi` — 사람이 걸어 다니는 테스트 영상 (OpenCV 공식 샘플, Apache-2.0)
+   - `sample_bg.png` — 배경 플레이트 대용 이미지
+   - `sample_bg_motion.mp4` — 움직이는 배경 플레이트 대용 영상
+
+   두 배경 파일은 합성 동작 확인용으로 코드가 그린 단순한 그림입니다. 실제
+   촬영에서는 AI로 만든 배경 플레이트로 바꿔 쓰면 됩니다.
+
+2. 자동 검사 실행 (화면 창이 뜨지 않습니다):
+   ```
+   python scripts/selftest.py
+   ```
+   마지막에 `8/8 항목 통과`가 나오면 정상입니다. 검사 항목:
+
+   | 항목 | 확인 내용 |
+   |---|---|
+   | 매팅 | 알파·전경 크기, 값 범위(0~1), 사람이 검출되는지 |
+   | 합성 | 알파 0인 곳은 배경, 1인 곳은 사람으로 나오는지 |
+   | 배경 맞춤 | `cover`/`contain`/`stretch` 세 방식 모두 출력 크기가 맞는지 |
+   | 시간적 일관성 | 같은 장면에 카메라 노이즈를 섞어 넣었을 때, 이전 프레임 정보를 넘기는 쪽이 매번 새로 계산하는 쪽보다 깜빡임이 적은지 |
+   | 처리 속도 | FPS 표시 (참고용, 통과 기준 없음) |
+
+3. 결과 눈으로 확인 — `outputs` 폴더를 엽니다.
+   - `selftest_preview.png`: 원본 | 알파 매트 | 합성 결과
+   - `selftest_composite.mp4`: 왼쪽 원본 | 오른쪽 합성 영상
+
+- 내 영상과 내 배경으로 검사하려면:
+  ```
+  python scripts/selftest.py --source 내영상.mp4 --background 내배경.png
+  ```
+- 샘플 영상은 사람이 멀리 작게 나오는 CCTV 구도라서, 뒤쪽 사람 일부가 빠지거나
+  경계가 흐릿한 것은 정상입니다. 실제 촬영처럼 사람이 크게 나오는 영상에서는
+  결과가 훨씬 깔끔합니다.
+
+### 10. 실행 ① — 실시간 매팅 미리보기 (`realtime_matte.py`)
+
+사람 영역(알파 매트)만 실시간으로 뽑아 화면에 보여줍니다. 카메라 번호나
+`downsample_ratio`를 맞춰 볼 때 씁니다. AI 배경과 합성하려면 11번을 보세요.
+
+#### 10-1. 카메라 / HDMI 캡처카드로 실행
 
 ```
 python realtime_matte.py --source 0
@@ -314,7 +357,7 @@ python realtime_matte.py --source 0
 - 처리가 입력보다 느려도 화면이 점점 늦어지지 않도록, 카메라 입력은 항상
   **가장 최근 프레임**만 처리합니다 (밀린 프레임은 건너뜁니다).
 
-#### 9-2. 카메라 없이 영상 파일로 실행
+#### 10-2. 카메라 없이 영상 파일로 실행
 
 사람이 나오는 아무 영상 파일(mp4 등)로 테스트할 수 있습니다.
 
@@ -326,7 +369,7 @@ python realtime_matte.py --source 영상파일.mp4 --loop
 - 영상 파일은 프레임을 건너뛰지 않고 순서대로 모두 처리합니다.
 - 경로에 공백이 있으면 따옴표로 감싸세요: `--source "C:\내 영상\test.mp4"`
 
-#### 9-3. 미리보기 창 단축키
+#### 10-3. 미리보기 창 단축키
 
 | 키 | 동작 |
 |---|---|
@@ -334,11 +377,12 @@ python realtime_matte.py --source 영상파일.mp4 --loop
 | `2` | 알파 매트 (흰색 = 사람, 검은색 = 배경) |
 | `3` | 원본과 알파 매트를 나란히 |
 | `r` | 시간 정보(recurrent state) 초기화 — 장면이 완전히 바뀌었는데 이전 장면의 잔상이 남을 때 |
+| `f` | 전체화면 켜기/끄기 |
 | `q` 또는 `ESC` | 종료 |
 
-화면 왼쪽 위에 처리 속도(FPS)와 현재 `ratio`(아래 9-4 참고)가 표시됩니다.
+화면 왼쪽 위에 처리 속도(FPS)와 현재 `ratio`(아래 10-4 참고)가 표시됩니다.
 
-#### 9-4. 주요 옵션
+#### 10-4. 주요 옵션
 
 | 옵션 | 설명 | 기본값 |
 |---|---|---|
@@ -349,6 +393,7 @@ python realtime_matte.py --source 영상파일.mp4 --loop
 | `--output` | 화면에 보이는 결과를 mp4로 저장 | 저장 안 함 |
 | `--no-display` | 창 없이 실행 (원격 PC 테스트용, `--output`과 함께 사용) | — |
 | `--max-frames` | 지정한 프레임 수만 처리하고 종료 | 끝까지 |
+| `--fullscreen` | 전체화면으로 시작 (외부 모니터 송출용) | 창 모드 |
 
 **`--downsample-ratio`란?** RVM은 사람의 대략적인 위치를 작게 줄인 영상에서
 먼저 찾고, 경계(머리카락 등)는 원래 해상도에서 다듬습니다. 이 값이 그
@@ -361,7 +406,7 @@ python realtime_matte.py --source 영상파일.mp4 --loop
   나오는 화면은 더 높게**(예: 0.4~0.5) 해야 사람을 놓치지 않습니다. 값이 높다고
   항상 좋은 것은 아니므로 실제 촬영 화면으로 비교해 보세요.
 
-#### 9-5. 사용 예
+#### 10-5. 사용 예
 
 ```
 # 캡처카드(1번)를 1080p로, 품질 우선 모델로
@@ -375,6 +420,71 @@ python realtime_matte.py --source test.mp4 --no-display --view side --output out
 > 기억해 다음 프레임 판단에 씁니다. 그래서 첫 몇 프레임은 결과가 다소 불안정하고,
 > 몇 프레임 지나면 안정됩니다. 영상 파일이 처음으로 되감기거나 해상도가 바뀌면
 > 기억을 자동으로 초기화합니다.
+
+### 11. 실행 ② — AI 배경과 실시간 합성 (`composite.py`)
+
+사람을 분리해 AI로 만든 배경 플레이트 위에 실시간으로 합성합니다. **실제 현장에서
+쓰는 메인 스크립트**입니다. 10번의 옵션(`--source`, `--variant`, `--device`,
+`--downsample-ratio`, `--loop`, `--output`, `--fullscreen` 등)과 단축키 `r`, `f`,
+`q`/`ESC`를 그대로 쓸 수 있습니다.
+
+#### 11-1. 기본 실행
+
+```
+python composite.py --source 0 --background ai_background.png
+```
+
+- `--background`에는 이미지(png, jpg 등)나 **영상 파일**(mp4 등)을 줄 수 있습니다.
+  배경 영상은 끝나면 처음부터 반복됩니다.
+- 카메라 없이 먼저 해 보려면 (9번의 샘플 사용):
+  ```
+  python composite.py --source samples/vtest.avi --background samples/sample_bg.png --loop
+  ```
+
+#### 11-2. 배경 여러 개를 준비해 두고 바꾸기
+
+```
+python composite.py --source 0 --background 배경1.png 배경2.png 배경3.mp4
+```
+
+실행 중 `b` 키를 누를 때마다 다음 배경으로 바뀝니다.
+
+#### 11-3. 배경과 카메라의 화면 비율이 다를 때 (`--fit`)
+
+| 값 | 동작 | 언제 |
+|---|---|---|
+| `cover` (기본) | 화면을 꽉 채우고, 넘치는 부분은 가운데 기준으로 잘라냄 | 대부분의 경우. 왜곡 없음 |
+| `contain` | 배경 전체가 보이도록 줄이고, 남는 부분은 검은 여백 | 배경 가장자리가 잘리면 안 될 때 |
+| `stretch` | 비율을 무시하고 늘려 맞춤 | 비율이 거의 같을 때만 (아니면 찌그러짐) |
+
+> 가장 깔끔한 방법은 AI 배경을 **카메라와 같은 해상도·비율**(예: 1920×1080)로
+> 만드는 것입니다. 그러면 `--fit`과 상관없이 그대로 쓰입니다.
+
+#### 11-4. 미리보기 창 단축키
+
+| 키 | 동작 |
+|---|---|
+| `1` | 합성 결과 (기본) |
+| `2` | 알파 매트 |
+| `3` | 원본 \| 합성 나란히 |
+| `b` | 다음 배경 |
+| `r` | 시간 정보 초기화 |
+| `f` | 전체화면 켜기/끄기 |
+| `q` 또는 `ESC` | 종료 |
+
+#### 11-5. 사용 예
+
+```
+# 캡처카드(1번) 1080p 입력을 AI 배경과 합성해 외부 모니터에 전체화면 송출
+python composite.py --source 1 --width 1920 --height 1080 --background ai_bg.png --fullscreen
+
+# 녹화된 영상에 배경을 합성해 파일로 저장 (창 없이)
+python composite.py --source 촬영본.mp4 --background ai_bg.png --no-display --output outputs/result.mp4
+```
+
+> 합성할 때 사람 부분은 원본 프레임이 아니라 **RVM이 따로 예측한 전경(fgr)**을
+> 씁니다. 원본을 그대로 쓰면 머리카락 경계 등에 원래 배경색이 번져 보이는데, RVM
+> 전경은 이 번짐을 줄여 줍니다.
 
 ---
 
@@ -392,6 +502,9 @@ python realtime_matte.py --source test.mp4 --no-display --view side --output out
 | 미리보기가 너무 느림 | `--downsample-ratio`를 낮추거나(예: 0.2), `--width 1280 --height 720`으로 입력 해상도를 낮춤. GPU 사용 여부 확인 |
 | 멀리 있는 사람이 일부 빠짐 | `--downsample-ratio`를 높임(예: 0.5). RVM은 화면에 크게 나오는 사람에 맞춰 학습되어 있어, 아주 작게 나오는 사람은 놓칠 수 있음 |
 | 장면 전환 후 이전 사람 잔상 | 미리보기 창에서 `r` 키 |
+| `배경 파일이 없습니다` / `배경 이미지를 읽을 수 없습니다` | `--background` 경로와 파일 확장자 확인. 이미지가 손상되지 않았는지 다른 프로그램으로 열어 확인 |
+| 합성 결과에서 배경이 찌그러짐 | `--fit stretch`를 쓰고 있다면 `cover`(기본)로 바꿈 |
+| `selftest.py`에서 `파일이 없습니다` | `python scripts/download_samples.py` 먼저 실행 |
 
 ## 파일 구성
 
@@ -402,10 +515,15 @@ RVM_code/
 ├── requirements.txt
 ├── rvm_loader.py                RVM 모델 불러오기 + 장치 자동 선택(cuda→mps→cpu)
 ├── realtime_matte.py            실시간 입력 → 알파·전경 추출 → 미리보기
+├── composite.py                 알파·전경 + AI 배경 플레이트 실시간 합성 (메인)
 ├── scripts/
 │   ├── download_weights.py      가중치 다운로드 + 무결성 검사
-│   └── verify_install.py        설치 확인 (카메라 불필요)
+│   ├── verify_install.py        설치 확인 (카메라 불필요)
+│   ├── download_samples.py      테스트 영상·샘플 배경 준비
+│   └── selftest.py              카메라 없이 전체 파이프라인 자동 검사
 ├── models/                      가중치 저장 위치 (커밋 안 됨)
+├── samples/                     테스트 샘플 (커밋 안 됨)
+├── outputs/                     결과 저장 위치 (커밋 안 됨)
 └── third_party/                 RVM 공식 저장소 clone 위치 (커밋 안 됨)
 ```
 
