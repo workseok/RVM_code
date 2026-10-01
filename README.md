@@ -19,7 +19,7 @@ AI로 만든 배경 이미지와 **실시간 합성**하는 로컬 파이프라�
 |---|---|---|---|
 | 1 | RVM 공식 저장소 설치 + 모델 불러오기 + 장치 자동 선택 | `rvm_loader.py` | ✅ |
 | 2 | 사전학습 가중치 다운로드 + 설치 확인 | `scripts/download_weights.py`, `scripts/verify_install.py` | ✅ |
-| 3 | 실시간 캡처·매팅 | `realtime_matte.py` | ⏳ 다음 단계 |
+| 3 | 실시간 캡처·매팅 | `realtime_matte.py` | ✅ |
 | 4 | AI 배경 플레이트와 실시간 합성 | `composite.py` | ⏳ 다음 단계 |
 | 5 | 카메라 없이 테스트 영상으로 검증 | — | ⏳ 다음 단계 |
 
@@ -263,8 +263,8 @@ python scripts/download_weights.py
   - https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_resnet50.pth
 - `.pth` 파일은 `.gitignore`에 등록되어 있어 커밋되지 않습니다.
 
-> 이후 실행 스크립트에서는 `--variant resnet50` 옵션 하나로 모델을 바꿀 수 있게
-> 만들 예정입니다.
+> 실행할 때 `--variant resnet50` 옵션을 붙이면 resnet50 모델로 바뀝니다
+> (9번 참고).
 
 ### 8. 설치 확인
 
@@ -297,10 +297,84 @@ python scripts/verify_install.py
   mobilenetv3 기준 약 11 FPS가 나왔습니다. GPU가 있는데 `장치: cpu`로 나온다면
   5번의 GPU 설치 과정을 다시 확인하세요.
 
-### 9. 실행
+### 9. 실행 — 실시간 매팅 미리보기 (`realtime_matte.py`)
 
-실시간 캡처·합성 스크립트(`realtime_matte.py`, `composite.py`)는 다음 단계에서
-추가됩니다.
+사람 영역(알파 매트)을 실시간으로 뽑아 화면에 보여줍니다. AI 배경 이미지와의
+합성은 다음 단계의 `composite.py`에서 추가됩니다.
+
+#### 9-1. 카메라 / HDMI 캡처카드로 실행
+
+```
+python realtime_matte.py --source 0
+```
+
+- `--source` 뒤의 숫자는 장치 번호입니다. 노트북 내장캠이 보통 `0`, 캡처카드는
+  `1`이나 `2`인 경우가 많습니다. 화면이 안 나오면 숫자를 바꿔 보세요.
+- 캡처카드 해상도를 지정하려면 `--width 1920 --height 1080`을 붙입니다.
+- 처리가 입력보다 느려도 화면이 점점 늦어지지 않도록, 카메라 입력은 항상
+  **가장 최근 프레임**만 처리합니다 (밀린 프레임은 건너뜁니다).
+
+#### 9-2. 카메라 없이 영상 파일로 실행
+
+사람이 나오는 아무 영상 파일(mp4 등)로 테스트할 수 있습니다.
+
+```
+python realtime_matte.py --source 영상파일.mp4 --loop
+```
+
+- `--loop`: 영상이 끝나면 처음부터 반복합니다.
+- 영상 파일은 프레임을 건너뛰지 않고 순서대로 모두 처리합니다.
+- 경로에 공백이 있으면 따옴표로 감싸세요: `--source "C:\내 영상\test.mp4"`
+
+#### 9-3. 미리보기 창 단축키
+
+| 키 | 동작 |
+|---|---|
+| `1` | 초록 배경 위에 사람만 표시 (기본) |
+| `2` | 알파 매트 (흰색 = 사람, 검은색 = 배경) |
+| `3` | 원본과 알파 매트를 나란히 |
+| `r` | 시간 정보(recurrent state) 초기화 — 장면이 완전히 바뀌었는데 이전 장면의 잔상이 남을 때 |
+| `q` 또는 `ESC` | 종료 |
+
+화면 왼쪽 위에 처리 속도(FPS)와 현재 `ratio`(아래 9-4 참고)가 표시됩니다.
+
+#### 9-4. 주요 옵션
+
+| 옵션 | 설명 | 기본값 |
+|---|---|---|
+| `--variant` | `mobilenetv3`(속도 우선) / `resnet50`(품질 우선) | `mobilenetv3` |
+| `--device` | `auto` / `cuda` / `mps` / `cpu` | `auto` (cuda → mps → cpu 순 자동) |
+| `--downsample-ratio` | 모델이 내부에서 영상을 얼마나 줄여 처리할지 (0~1) | 자동 |
+| `--view` | 시작 화면: `green` / `alpha` / `side` | `green` |
+| `--output` | 화면에 보이는 결과를 mp4로 저장 | 저장 안 함 |
+| `--no-display` | 창 없이 실행 (원격 PC 테스트용, `--output`과 함께 사용) | — |
+| `--max-frames` | 지정한 프레임 수만 처리하고 종료 | 끝까지 |
+
+**`--downsample-ratio`란?** RVM은 사람의 대략적인 위치를 작게 줄인 영상에서
+먼저 찾고, 경계(머리카락 등)는 원래 해상도에서 다듬습니다. 이 값이 그
+"줄이는 비율"입니다.
+
+- 지정하지 않으면 RVM 공식 방식대로 **줄인 영상의 긴 변이 512px가 되도록 자동
+  계산**합니다 (1920×1080 → 약 0.27, 3840×2160 → 약 0.13, 1280×720 → 0.4).
+- 공식 권장값: HD 0.25, 4K 0.125.
+- **상반신 위주 화면은 더 낮게**(예: 0.2) 해도 충분하고 빨라집니다. **전신이 작게
+  나오는 화면은 더 높게**(예: 0.4~0.5) 해야 사람을 놓치지 않습니다. 값이 높다고
+  항상 좋은 것은 아니므로 실제 촬영 화면으로 비교해 보세요.
+
+#### 9-5. 사용 예
+
+```
+# 캡처카드(1번)를 1080p로, 품질 우선 모델로
+python realtime_matte.py --source 1 --width 1920 --height 1080 --variant resnet50
+
+# 영상 파일을 창 없이 처리해 '원본|알파' 결과를 파일로 저장
+python realtime_matte.py --source test.mp4 --no-display --view side --output outputs/side.mp4
+```
+
+> **시간적 일관성(recurrent state)에 대해:** RVM은 이전 프레임들에서 본 정보를
+> 기억해 다음 프레임 판단에 씁니다. 그래서 첫 몇 프레임은 결과가 다소 불안정하고,
+> 몇 프레임 지나면 안정됩니다. 영상 파일이 처음으로 되감기거나 해상도가 바뀌면
+> 기억을 자동으로 초기화합니다.
 
 ---
 
@@ -314,6 +388,10 @@ python scripts/verify_install.py
 | `가중치 파일이 없습니다` | 7번 실행. `models` 폴더에 `.pth` 파일이 있는지 확인 |
 | `해시가 맞지 않아 삭제했습니다` | 다운로드가 중간에 끊긴 경우. 다시 실행 |
 | GPU가 있는데 `장치: cpu` | 5번의 "NVIDIA GPU가 있는 Windows PC라면" 과정 진행 |
+| `장치 인덱스를 열 수 없습니다` | `--source` 숫자를 0, 1, 2로 바꿔 시도. 다른 프로그램(Zoom, OBS 등)이 카메라를 쓰고 있으면 종료 |
+| 미리보기가 너무 느림 | `--downsample-ratio`를 낮추거나(예: 0.2), `--width 1280 --height 720`으로 입력 해상도를 낮춤. GPU 사용 여부 확인 |
+| 멀리 있는 사람이 일부 빠짐 | `--downsample-ratio`를 높임(예: 0.5). RVM은 화면에 크게 나오는 사람에 맞춰 학습되어 있어, 아주 작게 나오는 사람은 놓칠 수 있음 |
+| 장면 전환 후 이전 사람 잔상 | 미리보기 창에서 `r` 키 |
 
 ## 파일 구성
 
@@ -323,6 +401,7 @@ RVM_code/
 ├── LICENSE                      GPL-3.0 전문
 ├── requirements.txt
 ├── rvm_loader.py                RVM 모델 불러오기 + 장치 자동 선택(cuda→mps→cpu)
+├── realtime_matte.py            실시간 입력 → 알파·전경 추출 → 미리보기
 ├── scripts/
 │   ├── download_weights.py      가중치 다운로드 + 무결성 검사
 │   └── verify_install.py        설치 확인 (카메라 불필요)
