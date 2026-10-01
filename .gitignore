@@ -1,0 +1,22 @@
+# RVM 공식 저장소 clone 위치 (각자 clone, 커밋하지 않음)
+third_party/
+
+# 모델 가중치 (용량이 커서 커밋하지 않음 — scripts/download_weights.py로 받음)
+models/*
+!models/.gitkeep
+*.pth
+*.torchscript
+*.onnx
+
+# 출력물
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

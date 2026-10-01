@@ -1,0 +1,7 @@
+# RVM 공식 저장소의 requirements_inference.txt(torch==1.9.0 고정)는 설치하지 마세요.
+# torch 1.9는 Python 3.10 이상용 설치 파일이 없습니다. RVM 모델 코드는 아래 최신
+# 버전에서 동작을 확인했습니다 (torch 2.14 / torchvision 0.29).
+torch>=2.0
+torchvision>=0.15
+opencv-python>=4.8
+numpy>=1.24
